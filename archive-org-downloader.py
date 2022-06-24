@@ -27,21 +27,19 @@ def get_book_infos(session, url):
 	title = title[:150] # Trim the title to avoid long file names	
 	links = []
 	for item in data['brOptions']['data']:
-		for page in item:
-			links.append(page['uri'])
-
+		links.extend(page['uri'] for page in item)
 	if len(links) > 1:
 		print(f"[+] Found {len(links)} pages")
 		return title, links
 	else:
-		print(f"[-] Error while getting image links")
+		print("[-] Error while getting image links")
 		exit()
 
 def format_data(content_type, fields):
-	data = ""
-	for name, value in fields.items():
-		data += f"--{content_type}\x0d\x0aContent-Disposition: form-data; name=\"{name}\"\x0d\x0a\x0d\x0a{value}\x0d\x0a"
-	data += content_type+"--"
+	data = "".join(
+	    f"--{content_type}\x0d\x0aContent-Disposition: form-data; name=\"{name}\"\x0d\x0a\x0d\x0a{value}\x0d\x0a"
+	    for name, value in fields.items())
+	data += f"{content_type}--"
 	return data
 
 def login(email, password):
@@ -49,7 +47,7 @@ def login(email, password):
 	session.get("https://archive.org/account/login")
 	content_type = "----WebKitFormBoundary"+"".join(random.sample(string.ascii_letters + string.digits, 16))
 
-	headers = {'Content-Type': 'multipart/form-data; boundary='+content_type}
+	headers = {'Content-Type': f'multipart/form-data; boundary={content_type}'}
 	data = format_data(content_type, {"username":email, "password":password, "submit_by_js":"true"})
 
 	response = session.post("https://archive.org/account/login", data=data, headers=headers)
@@ -133,14 +131,13 @@ def download(session, n_threads, directory, links, scale, book_id):
 		for link in links:
 			i = links.index(link)
 			tasks.append(executor.submit(download_one_image, session=session, link=link, i=i, directory=directory ,book_id=book_id))
-		for task in tqdm(futures.as_completed(tasks), total=len(tasks)):
+		for _ in tqdm(futures.as_completed(tasks), total=len(tasks)):
 			pass
-	
-	images = [f"{directory}/{i}.jpg" for i in range(len(links))]
-	return images
+
+	return [f"{directory}/{i}.jpg" for i in range(len(links))]
 
 def make_pdf(pdf, title, directory):
-	file = title+".pdf"
+	file = f"{title}.pdf"
 	# Handle the case where multiple books with the same name are downloaded
 	i = 1
 	while os.path.isfile(os.path.join(directory, file)):
@@ -177,21 +174,20 @@ if __name__ == "__main__":
 	n_threads = args.threads
 	directory = args.dir
 
-	if directory == None:
+	if directory is None:
 		directory = os.getcwd()
 	elif not os.path.isdir(directory):
-		print(f"Output directory does not exist!")
+		print("Output directory does not exist!")
 		exit()
 
 	if args.url is not None:
 		urls = args.url
+	elif os.path.exists(args.file):
+		with open(args.file) as f:
+			urls = f.read().strip().split("\n")
 	else:
-		if os.path.exists(args.file):
-			with open(args.file) as f:
-				urls = f.read().strip().split("\n")
-		else:
-			print(f"{args.file} does not exist!")
-			exit()
+		print(f"{args.file} does not exist!")
+		exit()
 
 	# Check the urls format
 	for url in urls:
@@ -226,7 +222,7 @@ if __name__ == "__main__":
 			try:
 				shutil.rmtree(directory)
 			except OSError as e:
-				print ("Error: %s - %s." % (e.filename, e.strerror))
+				print(f"Error: {e.filename} - {e.strerror}.")
 
 		return_loan(session, book_id)
 
